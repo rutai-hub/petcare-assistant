@@ -98,7 +98,7 @@ exports.handler = async function(event, context) {
     try {
       const chatCompletion = await openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'gpt-4.1', 
+        model: 'gpt-4o', 
       });
 
       if (chatCompletion.choices && chatCompletion.choices.length > 0 && chatCompletion.choices[0].message) {
