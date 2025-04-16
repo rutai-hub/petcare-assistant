@@ -1,4 +1,4 @@
 # netlify.toml
 
 [functions]
-  directory = "netlify/functions"
+  timeout = 90 # 设置为 90 秒

@@ -1,48 +1,53 @@
 import React from 'react';
-// 移除了 Checkbox, Slider，保留了需要的组件
-import { Form, Select, InputNumber, Button, Row, Col, message } from 'antd'; 
+import { Form, Select, InputNumber, Button, Row, Col, message } from 'antd';
 import axios from 'axios';
 
-// 定义父组件传入的 props 类型 (保持不变)
+// 定义父组件传入的 props 类型
 interface PetInfoFormProps {
-  onAdviceGenerated: (data: any) => void;
+  // 确认这个签名与父组件传递函数和你的最新修改一致
+  onAdviceGenerated: (formData: any, responseData: any) => void;
   setLoading: (loading: boolean) => void;
 }
 
-// 示例犬种数据 (保持不变)
+// 示例犬种数据
 const dogBreeds = ['金毛', '拉布拉多', '泰迪', '柯基', '边牧', '柴犬', '其他'];
 
 const PetInfoForm: React.FC<PetInfoFormProps> = ({ onAdviceGenerated, setLoading }) => {
   const [form] = Form.useForm();
 
-  // onFinish 函数基本保持不变，提交的数据结构会略有不同 (有 gender, 没有 diet)
+  // --- 这是唯一且正确的 onFinish 函数 ---
   const onFinish = async (values: any) => {
-    // 注意：现在 values 中将包含 gender, age(number), weight, breed
     console.log('Form Values:', values);
-    setLoading(true);
+    setLoading(true); // 开始加载
     try {
-      // 只保留这一行完整的 axios.post 调用
+      // 发起 API 请求
       const response = await axios.post('/.netlify/functions/getAdvice', values);
-      onAdviceGenerated(response.data);
+      // 打印将传递的数据
+      console.log('即将传递给父组件的数据:', { formData: values, responseData: response.data });
+      // 调用父组件的回调，传递表单值和响应数据
+      onAdviceGenerated(values, response.data);
+      // 显示成功消息
       message.success('成功生成护理建议！');
-    } catch (error) {
+    } catch (error) { // <--- 完整的 catch 块
+      // 如果请求失败，打印错误并显示错误消息
       console.error("Error fetching advice:", error);
       message.error('生成建议失败，请稍后再试。');
-    } finally {
+    } finally { // <--- 完整的 finally 块
+      // 无论成功或失败，最后都结束加载状态
       setLoading(false);
     }
   };
+  // --- onFinish 函数定义结束 ---
 
   return (
     <Form
       form={form}
       layout="vertical"
       onFinish={onFinish}
-      // 更新 initialValues，移除 diet，可以给 gender 或 age 设置默认值 (可选)
-      initialValues={{ age: 1, gender: 'male' }} // 例如，默认年龄1岁，性别男生
+      initialValues={{ age: 1, gender: 'male' }}
     >
       <Row gutter={16}>
-        {/* --- 品种 (保持 Select) --- */}
+        {/* 品种 */}
         <Col xs={24} sm={12} md={8}>
           <Form.Item
             name="breed"
@@ -61,35 +66,33 @@ const PetInfoForm: React.FC<PetInfoFormProps> = ({ onAdviceGenerated, setLoading
           </Form.Item>
         </Col>
 
-        {/* --- 性别 (新增) --- */}
+        {/* 性别 */}
         <Col xs={24} sm={12} md={8}>
           <Form.Item
-            name="gender" // 对应 HTML 的 name="gender"
+            name="gender"
             label="性别"
             rules={[{ required: true, message: '请选择性别' }]}
           >
             <Select placeholder="请选择性别">
               <Select.Option value="male">男生</Select.Option>
               <Select.Option value="female">女生</Select.Option>
-              {/* 可以根据需要添加 'unknown' 或其他选项 */}
             </Select>
           </Form.Item>
         </Col>
 
-        {/* --- 年龄 (修改为 InputNumber) --- */}
+        {/* 年龄 */}
         <Col xs={24} sm={12} md={8}>
           <Form.Item
             name="age"
             label="年龄 (岁)"
             rules={[{ required: true, message: '请输入年龄' }]}
           >
-            {/* 将 Slider 替换为 InputNumber */}
             <InputNumber min={0} max={100} style={{ width: '100%' }} placeholder="请输入年龄" />
           </Form.Item>
         </Col>
 
-        {/* --- 体重 (保持 InputNumber) --- */}
-        <Col xs={24} sm={12} md={8}> {/* 调整 Col 宽度以适应布局 */}
+        {/* 体重 */}
+        <Col xs={24} sm={12} md={8}>
           <Form.Item
             name="weight"
             label="体重 (kg)"
@@ -98,13 +101,9 @@ const PetInfoForm: React.FC<PetInfoFormProps> = ({ onAdviceGenerated, setLoading
             <InputNumber min={0.1} step={0.1} style={{ width: '100%' }} placeholder="例如：28.5" />
           </Form.Item>
         </Col>
-
-        {/* --- 饮食习惯 (已移除) --- */}
-        {/* <Col xs={24}> ... Form.Item for diet ... </Col> */}
-
       </Row>
 
-      {/* --- 提交按钮 (保持不变) --- */}
+      {/* 提交按钮 */}
       <Form.Item>
         <Button type="primary" htmlType="submit">
           生成建议

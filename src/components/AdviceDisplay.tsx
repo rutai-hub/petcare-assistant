@@ -10,11 +10,13 @@ interface AdviceData {
   feeding: string;
   exercise: string;
   vaccination: string;
+  risks: string;         // <--- 新增
+  observations: string;  // <--- 新增
+
   petInfo: {
     breed: string;
     age: number;
     weight: number;
-    diet: string[];
   };
 }
 
@@ -53,27 +55,39 @@ const AdviceDisplay: React.FC<AdviceDisplayProps> = ({ advice, loading }) => {
       </Title>
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}>
-          <Card title="🦴 喂养建议">
-            <Paragraph>{advice.feeding}</Paragraph>
-          </Card>
-        </Col>
+    {/* 保留现有的喂养、运动、疫苗的 Col */}
+    <Col xs={24} md={8}>
+        <Card title="🦴 喂养建议">
+            <Paragraph>{advice.feeding || '暂无信息'}</Paragraph>
+        </Card>
+    </Col>
+    <Col xs={24} md={8}>
+        <Card title="🏃‍♂️ 运动计划">
+            <Paragraph>{advice.exercise || '暂无信息'}</Paragraph>
+        </Card>
+    </Col>
+    <Col xs={24} md={8}>
+        <Card title="💉 疫苗提醒">
+            <Paragraph>{advice.vaccination || '暂无信息'}</Paragraph>
+             <Paragraph type="secondary" style={{ fontSize: 'small', marginTop: '10px' }}>
+                 *重要提示：疫苗计划请务必咨询专业兽医师。
+             </Paragraph>
+        </Card>
+    </Col>
 
-        <Col xs={24} md={8}>
-          <Card title="🏃‍♂️ 运动计划">
-            <Paragraph>{advice.exercise}</Paragraph>
-          </Card>
-        </Col>
-
-        <Col xs={24} md={8}>
-          <Card title="💉 疫苗提醒">
-            <Paragraph>{advice.vaccination}</Paragraph>
-            <Paragraph type="secondary" style={{ fontSize: 'small', marginTop: '10px' }}>
-              *重要提示：疫苗计划请务必咨询专业兽医师。
-            </Paragraph>
-          </Card>
-        </Col>
-      </Row>
+    {/* ---> 在这里添加新的 Col 来显示 risks 和 observations <--- */}
+    <Col xs={24} md={12}> {/* 可以调整栅格占位，比如一行两个 */}
+        <Card title="⚠️ 主要风险">
+            <Paragraph>{advice.risks || '暂无信息'}</Paragraph>
+        </Card>
+    </Col>
+    <Col xs={24} md={12}>
+        <Card title="👀 观察要点">
+            <Paragraph>{advice.observations || '暂无信息'}</Paragraph>
+        </Card>
+    </Col>
+    {/* --------------------------------------------------------- */}
+</Row>
 
       <div style={{ textAlign: 'center', marginTop: '30px' }}>
         <Button
