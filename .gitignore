@@ -1,0 +1,30 @@
+# Dependencies (非常重要!)
+/node_modules
+
+# Build output
+/.netlify/
+/dist
+/build
+/out
+
+# Python virtual environment (如果你用了)
+/venv
+/env
+/ENV
+
+# Environment variables file (非常重要!)
+.env
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE settings (可选, 但推荐)
+# .vscode/ # 如果不想分享 VSCode 设置，取消这行注释
+.idea/
