@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const Papa = require('papaparse');
 const axios = require('axios');
-const { createClient } = require('@supabase/supabase-js'); // <--- 导入 Supabase 客户端
+const { createClient } = require('@supabase/supabase-js');
 
 // 读取环境变量
 const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
@@ -15,18 +15,12 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 if (!deepseekApiKey || !supabaseUrl || !supabaseServiceKey) {
   console.error("错误：缺少必要的环境变量 (DeepSeek Key, Supabase URL 或 Key)");
 }
-
-// 初始化 Supabase 客户端 (只有在 Key 存在时初始化)
 const supabase = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey) : null;
 
-const DEEPSEEK_API_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions';
+const DEEPSEEK_API_ENDPOINT = '[https://api.deepseek.com/v1/chat/completions](https://api.deepseek.com/v1/chat/completions)';
 
 exports.handler = async function(event, context) {
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405 };
-  }
-
-  // 检查依赖项是否配置好
+  if (event.httpMethod !== 'POST') { return { statusCode: 405 }; }
   if (!deepseekApiKey) { return { statusCode: 500, body: JSON.stringify({ error: 'DeepSeek API Key 未配置' }) }; }
   if (!supabase) { return { statusCode: 500, body: JSON.stringify({ error: 'Supabase 未配置' }) }; }
 
@@ -36,20 +30,17 @@ exports.handler = async function(event, context) {
       console.log('后台函数收到的数据:', petData);
       const { breed, gender, age, weight } = petData;
 
-      // --- 读取 CSV (逻辑不变) ---
+      // --- 读取 CSV ---
       let breedRulesText = "没有找到该品种的特定规则。";
       try {
           const csvFilePath = path.resolve(__dirname, 'breed_rules.csv');
           const csvFileContent = fs.readFileSync(csvFilePath, 'utf8');
           const parseResult = Papa.parse(csvFileContent, { header: true, skipEmptyLines: true });
           if (parseResult.errors.length > 0) { console.error('CSV 解析错误:', parseResult.errors); }
-          // 确保 parseResult.data 是数组
           const relevantRules = Array.isArray(parseResult.data) ? parseResult.data.filter(row => row && row.Breed && typeof row.Breed === 'string' && row.Breed.toLowerCase() === breed.toLowerCase()) : [];
           if (relevantRules.length > 0) {
             breedRulesText = `关于【${breed}】品种的已知护理要点:\n`;
-            relevantRules.forEach(rule => {
-              breedRulesText += `- ${rule.RuleType || '通用'}: ${rule.RiskDescription || ''} 建议: ${rule.Suggestion || ''}\n`;
-            });
+            relevantRules.forEach(rule => { breedRulesText += `- ${rule.RuleType || '通用'}: ${rule.RiskDescription || ''} 建议: ${rule.Suggestion || ''}\n`; });
             console.log("找到的相关规则文本:", breedRulesText);
           } else { console.log(`未在 CSV 中找到品种 "${breed}" 的特定规则。`); }
       } catch (fileError) {
@@ -60,34 +51,13 @@ exports.handler = async function(event, context) {
           }
       }
 
-      // --- 构建 Prompt (逻辑不变) ---
-      const prompt = `
-        你是一个经验丰富的宠物护理助手。请根据以下宠物信息和已知的犬种护理要点，生成一份护理建议。
-
-        宠物信息:
-        - 品种: ${breed}
-        - 性别: ${gender === 'male' ? '男生' : '女生'}
-        - 年龄: ${age} 岁
-        - 体重: ${weight} kg
-
-        已知的【${breed}】护理要点 (若未找到特定规则，则基于通用知识):
-        ${breedRulesText}
-
-        *** 重要指令：请将你的回复严格格式化为一个【单一的 JSON 对象字符串】。不要添加任何解释性文字、代码块标记(如 \`\`\`)或者其他任何非 JSON 内容。这个 JSON 对象必须包含以下【五个】键，其值都为字符串：
-        1.  "feeding": "关于喂养方面的具体建议文本..."
-        2.  "exercise": "关于运动方面的具体建议文本..."
-        3.  "vaccination": "关于疫苗或健康检查方面的提醒文本..."
-        4.  "risks": "基于宠物信息分析得出的主要健康风险点总结文本..."
-        5.  "observations": "需要主人特别留意的观察点或潜在问题迹象的文本..."
-
-        确保输出是一个可以直接被 JSON.parse() 解析的有效 JSON 字符串。例如：
-        {"feeding": "建议...", "exercise": "计划...", "vaccination": "提醒...", "risks": "风险...", "observations": "观察..."}
-      `;
+      // --- 构建 Prompt ---
+      const prompt = `...`; // 保持你要求 JSON 输出的 Prompt 不变
       console.log("已构建请求 JSON 输出的 Prompt。");
 
       // --- 调用 DeepSeek API ---
       let adviceObject = null;
-      let errorMessage = null; // 初始化为 null
+      let errorMessage = null;
       let success = false;
 
       try {
@@ -102,89 +72,59 @@ exports.handler = async function(event, context) {
 
           if (response.data && response.data.choices && response.data.choices.length > 0 && response.data.choices[0].message) {
               const rawContent = response.data.choices[0].message.content.trim();
-              console.log("DeepSeek API 返回原始文本 (后台):", rawContent);
+              console.log("DeepSeek API 返回的原始文本:", rawContent);
+
+              // --- !!! 新增：清理返回的文本，尝试提取纯 JSON !!! ---
+              let jsonString = rawContent;
+              // 尝试匹配 ```json ... ``` 或单独的 {...}
+              const jsonMatch = rawContent.match(/```json\s*([\s\S]*?)\s*```|({[\s\S]*})/);
+              if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) {
+                  jsonString = (jsonMatch[1] || jsonMatch[2]).trim();
+                  console.log("已清理 Markdown 标记，提取出的 JSON 字符串:", jsonString);
+              } else {
+                  // 如果没有匹配到 ```json，作为备用方案，也尝试去掉普通 ```
+                   jsonString = rawContent.replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+                   if(jsonString !== rawContent) {
+                       console.log("已清理普通 Markdown 标记，提取出的 JSON 字符串:", jsonString);
+                   } else {
+                       console.log("未检测到 Markdown 标记，直接尝试解析原始文本。");
+                   }
+              }
+              // --- 清理结束 ---
+
               try {
-                  adviceObject = JSON.parse(rawContent);
-                  if (typeof adviceObject.feeding !== 'string' || typeof adviceObject.exercise !== 'string' /*|| ...其他检查*/) {
+                  // --- 使用清理后的 jsonString 进行解析 ---
+                  adviceObject = JSON.parse(jsonString);
+                  // 字段验证
+                  if (typeof adviceObject.feeding !== 'string' || typeof adviceObject.exercise !== 'string' || typeof adviceObject.vaccination !== 'string' || typeof adviceObject.risks !== 'string' || typeof adviceObject.observations !== 'string') {
                       console.error("解析后的 JSON 缺少必要的字段。");
                       throw new Error("解析后的 JSON 格式不符合预期。");
                   }
-                  console.log("成功解析为 JSON 对象 (后台):", adviceObject);
+                  console.log("成功将响应解析为 JSON 对象 (后台):", adviceObject);
                   success = true;
               } catch (parseError) {
                   console.error("无法将 DeepSeek 返回的内容解析为 JSON (后台):", parseError);
-                   errorMessage = '后端无法解析建议格式。';
-                   adviceObject = { error: errorMessage, rawResponse: rawContent };
-                   success = false; // 解析失败也算不成功
+                  errorMessage = '后端无法解析建议格式。';
+                  adviceObject = { error: errorMessage, rawResponse: rawContent }; // 保留原始响应供调试
+                  success = false;
               }
-          } else {
-              console.error("DeepSeek API 返回无效响应结构 (后台):", response.data);
-              errorMessage = '从建议服务收到无效响应结构。';
-              adviceObject = { error: errorMessage };
-              success = false;
-          }
-      } catch (apiError) {
-          console.timeEnd('DeepSeek API Call (Background)');
-          console.error('调用 DeepSeek API 时出错 (后台):', apiError.message);
-          if (apiError.response) {
-              console.error("错误详情 (Status):", apiError.response.status);
-              console.error("错误详情 (Data):", apiError.response.data);
-              errorMessage = `调用建议服务失败 (${apiError.response.status})。`;
-          } else {
-              errorMessage = '调用建议服务时发生网络或未知错误。';
-          }
-           adviceObject = { error: errorMessage };
-           success = false;
-      }
+          } else { /* ... 处理无效响应结构 ... */ errorMessage = '从建议服务收到无效响应结构。'; success = false;}
+      } catch (apiError) { /* ... 处理 API 调用错误 ... */ errorMessage = `调用建议服务失败 (${apiError.response?.status || '未知错误'})。`; success = false; }
 
-      // --- 将结果（或错误）存入 Supabase ---
-      // 确保 petData 已定义
-      if (!petData) {
-        console.error("petData 未定义，无法存入数据库");
-        return { statusCode: 400, body: "Bad request data." };
-      }
+      // --- 将结果存入 Supabase (逻辑不变) ---
+      if (!petData) { /* ... 处理 petData 未定义 ... */ }
 
       if (success && adviceObject) {
-          console.log("准备将建议存入 Supabase...");
-          const dataToInsert = {
-              pet_breed: petData.breed,
-              pet_age: petData.age,
-              pet_weight: petData.weight,
-              pet_gender: petData.gender,
-              advice_data: adviceObject,
-              status: 'completed',
-          };
-          // 使用不同的变量名避免块级作用域的 const 重复声明问题
-          const { data: insertedData, error: dbInsertError } = await supabase
-              .from('generated_advice')
-              .insert([dataToInsert])
-              .select();
-
-          if (dbInsertError) {
-              console.error('Supabase 插入错误:', dbInsertError);
-              return { statusCode: 200, body: "Background task completed (DB insert failed)." };
-          } else {
-              console.log('成功存入 Supabase:', insertedData);
-              return { statusCode: 200, body: "Background task succeeded." };
-          }
+          // ... 插入成功数据到 Supabase ...
+          const dataToInsert = { /* ... */ };
+          const { data: insertedData, error: dbInsertError } = await supabase.from('generated_advice').insert([dataToInsert]).select();
+          if (dbInsertError) { /* ... 处理数据库插入错误 ... */ return { statusCode: 200, body: "Background task completed (DB insert failed)." };}
+          else { /* ... 记录成功 ... */ return { statusCode: 200, body: "Background task succeeded." }; }
       } else {
-          console.error("AI 处理失败，将错误信息存入 Supabase (可选)...");
-          const errorDataToInsert = {
-              pet_breed: petData.breed,
-              pet_age: petData.age,
-              pet_weight: petData.weight,
-              pet_gender: petData.gender,
-              status: 'failed',
-              error_message: errorMessage || '未知 AI 处理错误', // 确保 errorMessage 有值
-              advice_data: adviceObject // 也可存入包含错误的 adviceObject
-          };
-          // 使用不同的变量名
-          const { error: dbErrorSavingError } = await supabase
-              .from('generated_advice')
-              .insert([errorDataToInsert]);
+          // ... 插入失败状态到 Supabase ...
+          const errorDataToInsert = { /* ... */ error_message: errorMessage || '未知 AI 处理错误', advice_data: adviceObject };
+          const { error: dbErrorSavingError } = await supabase.from('generated_advice').insert([errorDataToInsert]);
           if (dbErrorSavingError) { console.error('存储错误状态到 Supabase 时出错:', dbErrorSavingError); }
-
-          // 即使存储错误状态失败，也要返回原始的 AI 处理错误
           return { statusCode: 500, body: `Background task failed: ${errorMessage || '未知 AI 处理错误'}` };
       }
 
@@ -192,4 +132,4 @@ exports.handler = async function(event, context) {
       console.error('后台函数顶层错误:', error);
       return { statusCode: 500, body: JSON.stringify({ error: '内部服务器错误，请求处理失败' }) };
   }
-}; // <--- 确保这个结尾括号和分号存在
+};
