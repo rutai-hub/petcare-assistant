@@ -15,29 +15,42 @@ const dogBreeds = ['金毛', '拉布拉多', '泰迪', '柯基', '边牧', '柴�
 const PetInfoForm: React.FC<PetInfoFormProps> = ({ onAdviceGenerated, setLoading }) => {
   const [form] = Form.useForm();
 
-  // --- 这是唯一且正确的 onFinish 函数 ---
+  // PetInfoForm.tsx 内部
   const onFinish = async (values: any) => {
     console.log('Form Values:', values);
-    setLoading(true); // 开始加载
+    setLoading(true); // 开始加载（这个 Loading 可能需要父组件管理，因为后台处理时间较长）
+
     try {
-      // 发起 API 请求
-      const response = await axios.post('/.netlify/functions/getAdvice', values);
-      // 打印将传递的数据
-      console.log('即将传递给父组件的数据:', { formData: values, responseData: response.data });
-      // 调用父组件的回调，传递表单值和响应数据
-      onAdviceGenerated(values, response.data);
-      // 显示成功消息
-      message.success('成功生成护理建议！');
-    } catch (error) { // <--- 完整的 catch 块
-      // 如果请求失败，打印错误并显示错误消息
-      console.error("Error fetching advice:", error);
-      message.error('生成建议失败，请稍后再试。');
-    } finally { // <--- 完整的 finally 块
-      // 无论成功或失败，最后都结束加载状态
-      setLoading(false);
+      // 调用后台函数
+      const response = await axios.post('/.netlify/functions/getAdvice-background', values);
+
+      if (response.status === 202) {
+        console.log('后台任务已成功触发 (202 Accepted)');
+        message.success('建议请求已提交，正在后台生成，请稍后...'); // 提示用户需要等待
+
+        // TODO: 这里需要通知父组件任务开始了，可能需要一个不同的回调函数或状态
+        // 暂时先不调用 onAdviceGenerated，因为它期望的是最终结果
+        // onAdviceGenerated(values, response.data); // <-- 移除或注释掉这行
+
+        // 父组件需要自己实现后续获取结果的逻辑
+
+      } else {
+        console.warn('调用后台函数收到非预期状态码:', response.status, response.data);
+        message.error('提交请求失败 (状态码非 202)，请稍后再试。');
+        // TODO: 通知父组件任务失败
+      }
+
+    } catch (error) {
+      console.error("调用后台函数失败:", error);
+      message.error('提交请求失败，请稍后再试。');
+      // TODO: 通知父组件任务失败
+    } finally {
+      // 注意：这里的 setLoading(false) 会在后台任务触发后【立即】执行
+      // 用户体验上可能需要一个持续的“处理中”状态，直到结果获取到
+      // 这个 loading 状态的管理可能需要移到父组件，或者引入更复杂的状态表示
+      setLoading(false); // 暂时保留，表示“触发”这个动作完成了
     }
   };
-  // --- onFinish 函数定义结束 ---
 
   return (
     <Form
