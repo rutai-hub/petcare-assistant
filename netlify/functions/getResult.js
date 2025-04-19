@@ -2,96 +2,109 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// 读取 Supabase 环境变量 (与 getAdvice-background.js 相同)
+// 读取 Supabase 环境变量 (不变)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
-// 检查环境变量
+// 检查环境变量 (不变)
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error("错误：getResult 函数缺少 Supabase 环境变量");
 }
 const supabase = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey) : null;
 
 exports.handler = async function(event, context) {
-  // 0. 检查 Supabase 客户端是否配置好
+  // 0. 检查 Supabase 客户端
   if (!supabase) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Supabase 未配置' }) };
   }
 
-  // 1. 这个函数通常用 GET 请求
+  // 1. 确认是 GET 请求
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: JSON.stringify({ error: '只允许 GET 请求' }) };
   }
 
-  // ---------------------------------------------------------------
-  // !!! 重要简化：当前实现是获取【最新一条】完成或失败的记录 !!!
-  // !!! 这在多个用户同时使用时会有问题 !!!
-  // !!! 真实的实现需要传递一个任务 ID 或用户 ID 来精确查询 !!!
-  // 我们暂时先用这个简化版来搭建轮询流程。
-  // ---------------------------------------------------------------
+  // --- !!! 修改：获取 taskId 参数 !!! ---
+  // Netlify 将 URL 查询参数放在 event.queryStringParameters 对象中
+  const taskId = event.queryStringParameters?.taskId; // 使用可选链 ?.
 
-  console.log("getResult 函数被调用");
+  // 检查 taskId 是否存在
+  if (!taskId) {
+    console.log("请求中缺少 taskId 参数");
+    return { statusCode: 400, body: JSON.stringify({ error: '缺少 taskId 参数' }) };
+  }
+  console.log(`getResult 函数被调用，查询 Task ID: ${taskId}`);
+  // -------------------------------------
 
   try {
-    // 2. 查询 Supabase 数据库 'generated_advice' 表
-    //    按创建时间降序排列，只取最新的一条记录
-    const { data, error } = await supabase
-      .from('generated_advice') // 你的表名
-      .select('*') // 选择所有列
-      .order('created_at', { ascending: false }) // 按创建时间倒序
-      .limit(1); // 只取一条
+    // --- !!! 修改：根据 taskId 查询 Supabase !!! ---
+    // 只选择我们需要的列，使用 eq 过滤 taskId，并期望只返回一行 (使用 single())
+    const { data: taskResult, error: dbError } = await supabase
+      .from('generated_advice')          // 表名
+      .select('status, advice_data, error_message') // 选择需要的列
+      .eq('task_id', taskId)             // !! 条件：task_id 等于传入的 taskId !!
+      .single();                        // !! 期望返回单行结果 (找不到或多于一行会报错) !!
 
-    // 3. 处理查询错误
-    if (error) {
-      console.error('Supabase 查询错误:', error);
-      return { statusCode: 500, body: JSON.stringify({ error: '查询建议结果时出错' }) };
+    // 3. 处理查询错误或未找到记录
+    if (dbError) {
+      // 检查是否是“未找到行”的特定错误 (PostgREST code PGRST116)
+      if (dbError.code === 'PGRST116') {
+        console.log(`Task ID ${taskId} 在数据库中未找到，可能仍在处理中...`);
+        // 返回 processing 状态，让前端继续轮询
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ status: 'processing' }) // 或 'nodata'
+        };
+      } else {
+        // 其他数据库查询错误
+        console.error(`Supabase 查询错误 for Task ID ${taskId}:`, dbError);
+        return { statusCode: 500, body: JSON.stringify({ error: `查询建议结果时出错 (DB)` }) };
+      }
     }
 
-    // 4. 分析查询结果并返回给前端
-    if (data && data.length > 0) {
-      const latestResult = data[0];
-      console.log("查询到的最新记录状态:", latestResult.status);
+    // 4. 如果查询成功 (data 非 null)
+    if (taskResult) {
+      console.log(`[${taskId}] 查询到的记录状态:`, taskResult.status);
 
-      if (latestResult.status === 'completed') {
-        // 如果最新记录是完成状态，返回成功状态和建议数据
+      if (taskResult.status === 'completed') {
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
           body: JSON.stringify({
             status: 'completed',
-            advice: latestResult.advice_data // 返回存储在 jsonb 列中的建议对象
+            advice: taskResult.advice_data // 返回 advice_data 列的内容
           })
         };
-      } else if (latestResult.status === 'failed') {
-        // 如果最新记录是失败状态，返回失败状态和错误信息
+      } else if (taskResult.status === 'failed') {
         return {
-          statusCode: 200, // 请求本身是成功的，只是业务逻辑失败
+          statusCode: 200,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
           body: JSON.stringify({
             status: 'failed',
-            error: latestResult.error_message || '建议生成失败'
+            error: taskResult.error_message || '建议生成失败 (未知原因)'
           })
         };
       } else {
-        // 如果最新记录状态是 processing 或其他状态，告知前端仍在处理中
+        // 如果状态是 'processing' 或其他未完成状态
         return {
-          statusCode: 200, // 请求成功，但任务未完成
+          statusCode: 200,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-          body: JSON.stringify({ status: 'processing' })
+          body: JSON.stringify({ status: 'processing' }) // 让前端继续轮询
         };
       }
     } else {
-      // 如果数据库里一条记录都没有
-      console.log("数据库中没有找到任何建议记录。");
-      return {
-        statusCode: 200, // 请求成功，但无数据
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ status: 'nodata' }) // 或 'processing'
-      };
+       // 理论上 .single() 在找不到时会返回 error，但加个保险
+       console.log(`Task ID ${taskId} 查询返回 null 数据，可能仍在处理中...`);
+       return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            body: JSON.stringify({ status: 'processing' })
+       };
     }
+    // --- 查询逻辑结束 ---
 
   } catch (error) {
-    console.error('getResult 函数执行时发生意外错误:', error);
+    console.error(`getResult 函数执行时发生意外错误 (Task ID: ${taskId}):`, error);
     return { statusCode: 500, body: JSON.stringify({ error: '查询建议时发生内部错误' }) };
   }
 };
