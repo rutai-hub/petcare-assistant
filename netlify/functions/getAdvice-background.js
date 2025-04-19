@@ -66,13 +66,37 @@ exports.handler = async function(event, context) {
           }
       }
 
-      // --- 构建 Prompt ---
+      // --- 4. 构建新的 Prompt (要求返回 JSON 且使用中文) ---
       const prompt = `
-        你是一个经验丰富的宠物护理助手...（保持原来的完整 Prompt）...
-        *** 重要指令：请将你的回复严格格式化为一个【单一的 JSON 对象字符串】...包含以下【五个】键...
-        {"feeding": "...", "exercise": "...", "vaccination": "...", "risks": "...", "observations": "..."}
+        你是一个经验丰富的宠物护理助手。请根据以下宠物信息和已知的犬种护理要点，生成一份护理建议。
+
+        宠物信息:
+        - 品种: ${breed}
+        - 性别: ${gender === 'male' ? '男生' : '女生'}
+        - 年龄: ${age} 岁
+        - 体重: ${weight} kg
+
+        已知的【${breed}】护理要点 (若未找到特定规则，则基于通用知识):
+        ${breedRulesText}
+
+        请综合分析以上信息，特别是关注体重、关节、以及该品种特有的护理要点。
+
+        *** 重要指令：请将你的回复严格格式化为一个【单一的 JSON 对象字符串】。不要添加任何解释性文字、代码块标记(如 \`\`\`)或者其他任何非 JSON 内容。这个 JSON 对象必须包含以下【五个】键，其值都为字符串：
+        1.  "feeding": "关于喂养方面的具体建议文本..."
+        2.  "exercise": "关于运动方面的具体建议文本..."
+        3.  "vaccination": "关于疫苗或健康检查方面的提醒文本..."
+        4.  "risks": "基于宠物信息分析得出的主要健康风险点总结文本..."
+        5.  "observations": "需要主人特别留意的观察点或潜在问题迹象的文本..."
+
+        确保输出是一个可以直接被 JSON.parse() 解析的有效 JSON 字符串。例如：
+        {"feeding": "建议...", "exercise": "计划...", "vaccination": "提醒...", "risks": "风险...", "observations": "观察..."}
+
+        +++ 请确保 JSON 对象中所有键（feeding, exercise, vaccination, risks, observations）对应的值（那些建议文本）都【必须使用简体中文】书写。 +++
       `;
-      console.log(`[${taskId}] 已构建 Prompt (要求 JSON)。`);
+      // Prompt 定义结束
+
+      // 这句 console.log 不需要改
+      console.log(`[${taskId}] 已构建 Prompt (要求 JSON 输出，中文内容)。`); // 更新了日志信息
 
       // --- 调用 DeepSeek API ---
       let adviceObject = null;
