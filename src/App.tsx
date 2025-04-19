@@ -18,13 +18,13 @@ interface GetResultResponse {
     advice?: { /* AI 返回的结构化建议 */ } | null;
     error?: string;
 }
-interface StartAdviceResponse { // startAdviceGeneration 返回的接口
+interface StartAdviceResponse {
     taskId?: string; error?: string;
 }
 
 // --- 常量 ---
-const POLLING_INTERVAL = 5000;
-const MAX_POLLING_DURATION = 90000;
+const POLLING_INTERVAL = 5000; // 5 秒
+const MAX_POLLING_DURATION = 90000; // 90 秒
 
 // --- App 组件 ---
 const { Header, Content, Footer } = Layout;
@@ -33,15 +33,11 @@ const { Title } = Typography;
 function App() {
   const [advice, setAdvice] = useState<AdviceData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  // currentPetInfo 和 currentTaskId 现在只在轮询成功后或处理函数内部使用，可以不单独存 state
-  // 但为了组合最终数据，currentPetInfo 还是需要存一下
-  const [currentPetInfo, setCurrentPetInfo] = useState<FormData | null>(null);
-
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // 使用 Ref 存储 taskId 和 petInfo 供轮询函数稳定访问
+  // 使用 Ref 来存储需要在回调中稳定访问的值
   const currentTaskIdRef = useRef<string | null>(null);
   const currentPetInfoRef = useRef<FormData | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- 清理定时器 ---
   const clearPollingTimers = useCallback(() => {
@@ -51,8 +47,8 @@ function App() {
 
   // --- 轮询函数 ---
   const pollForResult = useCallback(async () => {
-    const taskId = currentTaskIdRef.current; // 从 Ref 读取 taskId
-    const petInfo = currentPetInfoRef.current; // 从 Ref 读取 petInfo
+    const taskId = currentTaskIdRef.current;
+    const petInfo = currentPetInfoRef.current; // 读取 Ref 中的 petInfo
     console.log(`LOG: --- pollForResult 函数开始执行 (Task ID: ${taskId}) ---`);
 
     if (!petInfo || !taskId) {
@@ -62,24 +58,23 @@ function App() {
     console.log(`LOG: pollForResult 正在运行 (Task ID: ${taskId})，准备调用 /getResult...`);
 
     try {
-      const response = await axios.get<GetResultResponse>(`/.netlify/functions/getResult?taskId=${taskId}`); // 使用 taskId 查询
+      const response = await axios.get<GetResultResponse>(`/.netlify/functions/getResult?taskId=${taskId}`);
       const result = response.data;
       console.log("轮询结果:", result);
 
       if (result.status === 'completed') {
-        console.log("LOG: pollForResult - 收到的 'completed' 状态的完整 result:", JSON.stringify(result, null, 2));
         console.log(`[${taskId}] 获取到 'completed' 状态，停止轮询。`);
         clearPollingTimers();
         if (result.advice && !result.advice.error && result.advice.feeding /*...*/ ) {
-            const finalAdviceData: AdviceData = {
+           const finalAdviceData: AdviceData = {
                 feeding: result.advice.feeding || '', exercise: result.advice.exercise || '',
                 vaccination: result.advice.vaccination || '', risks: result.advice.risks || '',
                 observations: result.advice.observations || '',
                 petInfo: { breed: petInfo.breed, age: petInfo.age, weight: petInfo.weight }
             };
-            console.log(`[${taskId}] LOG: 即将调用 setAdvice 更新状态:`, finalAdviceData);
-            setAdvice(finalAdviceData); setLoading(false); message.success("建议已成功获取！");
-        } else { /* ... 处理无效建议数据 ... */ setAdvice(null); setLoading(false); message.error(result.advice?.error || "获取到的建议数据格式无效。"); }
+           console.log(`[${taskId}] LOG: 即将调用 setAdvice 更新状态:`, finalAdviceData);
+           setAdvice(finalAdviceData); setLoading(false); message.success("建议已成功获取！");
+        } else { console.error(`[${taskId}] 状态为 completed 但建议数据无效:`, result.advice); setAdvice(null); setLoading(false); message.error(result.advice?.error || "获取到的建议数据格式无效。");}
       } else if (result.status === 'failed') {
         console.error(`[${taskId}] 获取到 'failed' 状态，停止轮询。`);
         clearPollingTimers(); setLoading(false); setAdvice(null); message.error(result.error || '建议生成失败。');
@@ -90,18 +85,17 @@ function App() {
       console.error(`[${taskId}] 轮询请求失败:`, error);
       clearPollingTimers(); setLoading(false); setAdvice(null); message.error('获取建议结果时出错。');
     }
-  }, [clearPollingTimers]); // pollForResult 不再依赖 state，只依赖稳定的 clearPollingTimers
+  }, [clearPollingTimers]); // pollForResult 只依赖 clearPollingTimers
 
-  // --- 表单提交处理函数 (调用 startAdviceGeneration) ---
-  // 这个函数现在是传递给 PetInfoForm 的 onSubmit prop
+  // --- 表单提交处理函数 ---
   const handleFormSubmit = useCallback(async (formData: FormData) => {
     console.log("LOG: === App.tsx handleFormSubmit function ENTERED ===");
     console.log("表单数据:", formData);
 
-    clearPollingTimers(); // 清理旧的
-    setAdvice(null);      // 清空旧建议
-    setLoading(true);     // 开始加载状态
-    setCurrentPetInfo(formData); // 更新状态（会触发 useEffect 更新 Ref）
+    clearPollingTimers();
+    setAdvice(null);
+    currentPetInfoRef.current = formData; // 直接更新 Ref
+    setLoading(true);
     currentTaskIdRef.current = null; // 清空旧 Task ID Ref
 
     try {
@@ -114,33 +108,24 @@ function App() {
           console.log(`LOG: App.tsx - 收到 Task ID: ${taskId}，准备启动轮询...`);
 
           // 设置超时
-          pollingTimeoutRef.current = setTimeout(() => {
-              console.error(`轮询超时 (Task ID: ${taskId})！`); clearPollingTimers(); setLoading(false); setAdvice(null);
-              message.error(`获取建议超时（超过 ${MAX_POLLING_DURATION / 1000} 秒）。`);
-          }, MAX_POLLING_DURATION);
+          pollingTimeoutRef.current = setTimeout(() => { /* ... 超时处理 ... */ }, MAX_POLLING_DURATION);
           console.log("LOG: App.tsx - Timeout timer set, ID:", pollingTimeoutRef.current);
 
-          // 启动轮询
-          console.log(`LOG: App.tsx - Setting polling interval (每 ${POLLING_INTERVAL / 1000} 秒)...`);
+          // 启动轮询 (第一次将在 INTERVAL 后执行)
           pollingIntervalRef.current = setInterval(pollForResult, POLLING_INTERVAL);
           console.log("LOG: App.tsx - Interval timer set, ID:", pollingIntervalRef.current);
 
-          message.info("建议请求已提交，正在后台生成..."); // 提示用户
+          message.info("建议请求已提交，正在后台生成...");
 
       } else {
           console.error("调用 startAdviceGeneration 未收到有效的 Task ID:", response.data);
-          setLoading(false); setCurrentPetInfo(null); message.error(response.data?.error || "启动任务失败。");
+          setLoading(false); currentPetInfoRef.current = null; message.error(response.data?.error || "启动任务失败。");
       }
     } catch (error) {
       console.error("调用 startAdviceGeneration 失败:", error);
-      setLoading(false); setCurrentPetInfo(null); message.error("提交请求失败。");
+      setLoading(false); currentPetInfoRef.current = null; message.error("提交请求失败。");
     }
   }, [clearPollingTimers, pollForResult]); // 依赖项
-
-  // --- 同步 state 到 ref ---
-   useEffect(() => {
-       currentPetInfoRef.current = currentPetInfo;
-   }, [currentPetInfo]);
 
   // --- 组件卸载时清理 ---
   useEffect(() => { return () => { clearPollingTimers(); }; }, [clearPollingTimers]);
