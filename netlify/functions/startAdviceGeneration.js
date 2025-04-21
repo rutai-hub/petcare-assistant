@@ -58,8 +58,8 @@ exports.handler = async function(event, context) {
       pet_gender: petData.gender,
     };
     const { error: dbInsertError } = await supabase
-      .from('generated_advice') // 你的表名
-      .insert([initialData]);
+    .from('GeneratedAdvice') // <-- 改为 PascalCase
+    .insert([initialData]);
 
     if (dbInsertError) {
       console.error(`[${taskId}] Supabase 插入初始记录错误:`, dbInsertError);
@@ -72,7 +72,7 @@ exports.handler = async function(event, context) {
     if (!siteUrl) {
         console.error("错误：无法获取站点 URL (process.env.URL)，无法触发后台函数。请确保在 Netlify 构建设置中定义了 URL 环境变量。");
          // 即使触发失败，也需要尝试更新数据库状态
-         await supabase.from('generated_advice').update({ status: 'failed', error_message: '无法触发后台函数' }).eq('task_id', taskId);
+         await supabase.from('GeneratedAdvice').update({ status: 'failed', error_message: '无法触发后台函数' }).eq('task_id', taskId);
          throw new Error('无法触发后台函数');
     }
     const functionUrl = `${siteUrl}/.netlify/functions/getAdvice-background`;
@@ -88,7 +88,7 @@ exports.handler = async function(event, context) {
       .catch(err => {
           console.error(`[${taskId}] 调用后台函数 ${functionUrl} 出错:`, err.message);
           // 尝试更新数据库状态为失败
-          supabase.from('generated_advice').update({ status: 'failed', error_message: `无法调用后台处理函数: ${err.message}` }).eq('task_id', taskId)
+          supabase.from('GeneratedAdvice').update({ status: 'failed', error_message: `无法调用后台处理函数: ${err.message}` }).eq('task_id', taskId)
             .then(({ error: updateError }) => {
                 if (updateError) console.error(`[${taskId}] 更新后台调用失败状态时出错:`, updateError);
             });
@@ -106,7 +106,7 @@ exports.handler = async function(event, context) {
     console.error(`[${taskId || '未知 Task'}] startAdviceGeneration 处理时发生错误:`, error);
     // 如果 taskId 已生成，尝试更新状态为 failed
     if (taskId && supabase) {
-        try { await supabase.from('generated_advice').update({ status: 'failed', error_message: `任务启动失败: ${error.message}` }).eq('task_id', taskId); }
+        try { await supabase.from('GeneratedAdvice').update({ status: 'failed', error_message: `任务启动失败: ${error.message}` }).eq('task_id', taskId); }
         catch (dbError) { console.error(`[${taskId}] 尝试记录顶层错误到 Supabase 时失败:`, dbError); }
     }
     return { statusCode: 500, body: JSON.stringify({ error: `处理请求时发生内部错误: ${error.message}` }) };

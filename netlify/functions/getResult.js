@@ -25,7 +25,7 @@ exports.handler = async function(event, context) {
   try {
     // 根据 taskId 查询 Supabase
     const { data: taskResult, error: dbError } = await supabase
-      .from('generated_advice')
+      .from('GeneratedAdvice')
       .select('status, advice_data, error_message') // 只选需要的列
       .eq('task_id', taskId) // 精确查询
       .single(); // 期望返回单行

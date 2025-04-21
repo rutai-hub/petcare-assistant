@@ -156,7 +156,7 @@ exports.handler = async function(event, context) {
       console.log(`[${taskId}] 更新状态为: ${updateData.status}`);
 
       const { error: dbUpdateError } = await supabase
-          .from('generated_advice')
+          .from('GeneratedAdvice')
           .update(updateData)
           .eq('task_id', taskId); // 使用 eq 更新
 
@@ -173,7 +173,7 @@ exports.handler = async function(event, context) {
       console.error(`[${taskId || '未知 Task'}] 后台函数顶层错误:`, error);
       // 如果 taskId 已知，尝试更新数据库为 failed
       if (taskId && supabase) {
-          try { await supabase.from('generated_advice').update({ status: 'failed', error_message: `顶层错误: ${error.message}` }).eq('task_id', taskId); }
+          try { await supabase.from('GeneratedAdvice').update({ status: 'failed', error_message: `顶层错误: ${error.message}` }).eq('task_id', taskId); }
           catch (dbError) { console.error(`[${taskId}] 记录顶层错误到 Supabase 时失败:`, dbError); }
       }
       return { statusCode: 500 }; // 返回错误给 Netlify 平台
